@@ -30,19 +30,19 @@
 
   <script>
     const channelId = 3160844;
-    const fields = [1,2,3];
+    const fields = [1, 2, 3];
 
     async function fetchLastCSV() {
       const url = `https://api.thingspeak.com/channels/${channelId}/feeds.csv?results=1`;
       const response = await fetch(url);
       if (!response.ok) throw new Error('Error HTTP ' + response.status);
-      const text = await response.text();
-      // Primera línea son encabezados, segunda contiene datos
-      const lines = text.trim().split('\\n');
+      const text = (await response.text()).trim();
+      const lines = text.split('\\n');
+      if (lines.length < 2) throw new Error('Sin datos disponibles');
       const headers = lines[0].split(',');
       const values = lines[1].split(',');
       const data = {};
-      headers.forEach((h, i) => data[h] = values[i]);
+      headers.forEach((h, i) => data[h.trim()] = values[i]?.trim());
       return data;
     }
 
@@ -65,7 +65,8 @@
         const last = await fetchLastCSV();
         render(last);
       } catch (err) {
-        document.getElementById('timestamp').textContent = 'Error al obtener datos: ' + err.message;
+        document.getElementById('timestamp').textContent =
+          'Error al obtener datos: ' + err.message;
       }
     }
 
