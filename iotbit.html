@@ -3,28 +3,30 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>IoT Bit – Dashboard Mejorado</title>
+<title>IoT Bit – Última lectura y 24 últimes</title>
 <style>
 body { background:#E0F2F7; font-family:Arial,sans-serif; margin:0; padding:20px; color:#1F3A57; }
 .card { background:#fff; border-radius:12px; padding:20px; max-width:700px; margin:20px auto; box-shadow:0 2px 10px rgba(0,0,0,0.08);}
-#values { display:flex; justify-content:space-between; margin-top:15px;}
-.field-box { background:#fff; border:1px solid #C4DCE4; border-radius:10px; padding:15px; width:30%; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.05);}
-.field-label { color:#3A7CA5; font-size:14px; margin-bottom:8px; }
-.field-current { color:#1F3A57; font-size:22px; margin:5px 0; }
-.field-average { color:#1E7F3F; font-size:18px; margin:5px 0; }
-.field-trend { font-size:18px; margin-left:5px; }
+#values, #averages { display:flex; justify-content:space-between; margin-top:15px;}
+.stat { background:#fff; border:1px solid #C4DCE4; border-radius:10px; padding:15px; width:30%; text-align:center; box-shadow:0 1px 4px rgba(0,0,0,0.05);}
+.stat-label { color:#3A7CA5; font-size:14px; margin-bottom:8px; }
+.stat-value { color:#1F3A57; font-size:22px; margin-top:5px;}
+.stat-average { color:#1E7F3F; font-size:18px; margin-top:5px;}
 #errorBox { display:none; background:#FDECEA; color:#A94442; padding:12px; margin-top:16px; border-radius:8px; text-align:center;}
 #timestamp { margin-top:15px; text-align:center; font-size:14px; color:#1F3A57;}
+h3 { margin-top:25px; color:#3A7CA5;}
 </style>
 </head>
 <body>
 
 <div class="card">
   <h2>Última lectura — Canal ThingSpeak 3160844</h2>
-
   <div id="values"></div>
   <div id="timestamp"></div>
   <div id="errorBox"></div>
+
+  <h3>24 últimes</h3>
+  <div id="averages"></div>
 </div>
 
 <script>
@@ -56,32 +58,29 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderValues(entry){
     const container = document.getElementById("values");
     container.innerHTML="";
-    const history = loadHistory();
-
     fields.forEach((f,i)=>{
-      const current = entry[`field${f}`] ?? "—";
+      const value = entry[`field${f}`] ?? "—";
+      const div = document.createElement("div");
+      div.className="stat";
+      div.innerHTML=`<div class='stat-label'>${fieldNames[i]}</div><div class='stat-value'>${value}</div>`;
+      container.appendChild(div);
+    });
+    document.getElementById("timestamp").textContent="Hora: "+new Date(entry.created_at||Date.now()).toLocaleString();
+  }
+
+  function renderAverages(){
+    const container = document.getElementById("averages");
+    container.innerHTML="";
+    const history = loadHistory();
+    fields.forEach((f,i)=>{
       const raw = history[`field${f}`] || [];
       const values = raw.map(e=>Number(e.value)).filter(v=>!isNaN(v));
       const avg = values.length ? (values.reduce((a,b)=>a+b,0)/values.length).toFixed(2) : "—";
-
-      // Determinar tendencia
-      let trend = "→";
-      if(current!=="—" && avg!=="—"){
-        if(Number(current) > Number(avg)) trend="↑";
-        else if(Number(current) < Number(avg)) trend="↓";
-      }
-
       const div = document.createElement("div");
-      div.className="field-box";
-      div.innerHTML=`
-        <div class="field-label">${fieldNames[i]}</div>
-        <div class="field-current">${current} <span class="field-trend">${trend}</span></div>
-        <div class="field-average">Media últimas 24: ${avg}</div>
-      `;
+      div.className="stat";
+      div.innerHTML=`<div class='stat-label'>${fieldNames[i]}</div><div class='stat-average'>${avg}</div>`;
       container.appendChild(div);
     });
-
-    document.getElementById("timestamp").textContent="Hora: "+new Date(entry.created_at||Date.now()).toLocaleString();
   }
 
   async function update(){
@@ -93,13 +92,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const data = await res.json();
       renderValues(data);
       saveHistory(data);
+      renderAverages();
       document.getElementById("errorBox").style.display="none";
     }catch(err){
       const last = loadLastGood() || {field1:"—",field2:"—",field3:"—", created_at:new Date().toISOString()};
       renderValues(last);
+      renderAverages();
       const box=document.getElementById("errorBox");
       box.style.display="block";
-      box.textContent="⚠️ Error: "+err.message;
+      box.textContent="⚠️ Error: dispositiu sense connexió";
     }
   }
 
