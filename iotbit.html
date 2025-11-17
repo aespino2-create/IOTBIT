@@ -2,112 +2,220 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>IoT Bit – Visor de Datos</title>
 
 <style>
-body {
-  background: #e9f0f7;
-  font-family: Arial, sans-serif;
-  margin: 0;
-  padding: 20px;
-}
+  /* Fondo y tipografía */
+  body {
+    background: #E0F2F7; /* azul muy suave */
+    font-family: Arial, sans-serif;
+    margin: 0;
+    padding: 20px;
+    color: #1F3A57;
+  }
 
-.card {
-  background: #ffffff;
-  padding: 20px;
-  border-radius: 12px;
-  max-width: 500px;
-  margin: 0 auto;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-  color: #1d3557;
-}
+  /* Tarjeta principal */
+  .card {
+    background: #FFFFFF;
+    border-radius: 12px;
+    padding: 20px;
+    max-width: 500px;
+    margin: 0 auto;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+  }
 
-.stat {
-  background: #ffffff;
-  border: 2px solid #d2e3f1;
-  border-radius: 10px;
-}
+  /* Contenedor de valores */
+  #values {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
+  }
 
-.stat-label {
-  color: #457b9d;
-}
-
+  /* Cada campo (stat) */
+  .stat {
+    background: #FFFFFF;
+    border: 1px solid #C4DCE4;
+    border-radius: 10px;
+    padding: 10px;
+    width: 30%;
+    text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+  }
 
   .stat-label {
+    color: #3A7CA5;
     font-size: 12px;
-    color: #444;
   }
 
   .stat-value {
+    color: #1F3A57;
     font-size: 22px;
     margin-top: 5px;
   }
 
+  /* Hora de la lectura */
   #timestamp {
     margin-top: 15px;
     text-align: center;
     font-size: 14px;
-    color: #333;
+    color: #1F3A57;
+  }
+
+  /* Caja de error */
+  #errorBox {
+    display: none;
+    background: #FDECEA;
+    color: #A94442;
+    padding: 12px;
+    margin-top: 16px;
+    border-radius: 8px;
+    text-align: center;
+  }
+
+  /* Modo oscuro automático (opcional) */
+  @media (prefers-color-scheme: dark) {
+    body {
+      background: #1A1A1A;
+      color: #E0E0E0;
+    }
+    .card {
+      background: #2E2E2E;
+    }
+    .stat {
+      background: #333333;
+      border-color: #444;
+    }
+    .stat-label {
+      color: #00C8FF;
+    }
+    .stat-value {
+      color: #E0E0E0;
+    }
+    #errorBox {
+      background: #531919;
+      color: #FFB2B2;
+    }
   }
 </style>
 </head>
-
 <body>
 
 <div class="card">
   <h2>Última lectura — Canal ThingSpeak 3160844</h2>
 
-  <!-- Datos -->
+  <!-- Contenedor de los valores -->
   <div id="values"></div>
 
-  <!-- Fecha y hora -->
+  <!-- Fecha y hora de la lectura -->
   <div id="timestamp"></div>
 
-  <!-- Error -->
-  <div id="errorBox"
-       style="display:none;background:#fee2e2;color:#991b1b;padding:12px;margin-top:16px;
-       border-radius:8px;text-align:center;">
-  </div>
+  <!-- Caja de error -->
+  <div id="errorBox"></div>
 </div>
 
-<!-- TU SCRIPT -->
 <script>
 document.addEventListener("DOMContentLoaded", () => {
 
   const channelId = 3160844;
   const fields = [1,2,3];
 
-  // Función para asegurar que exista el contenedor de error
   function ensureErrorBox() {
     let box = document.getElementById("errorBox");
     if (!box) {
       box = document.createElement("div");
       box.id = "errorBox";
-      box.style.display = "none";
-      box.style.background = "#fee2e2";
-      box.style.color = "#991b1b";
-      box.style.padding = "12px";
-      box.style.marginTop = "16px";
-      box.style.borderRadius = "8px";
-      box.style.textAlign = "center";
       document.querySelector(".card").appendChild(box);
     }
     return box;
   }
 
-  // Guardar última lectura válida
   function saveLastGood(entry) {
-    try {
-      localStorage.setItem("lastGoodReading", JSON.stringify(entry));
-    } catch {}
+    try { localStorage.setItem("lastGoodReading", JSON.stringify(entry)); } catch {}
   }
 
-  // Cargar última lectura válida
   function loadLastGood() {
     try {
-      const data = localStorage.getItem("lastG
+      const data = localStorage.getItem("lastGoodReading");
+      return data ? JSON.parse(data) : null;
+    } catch { return null; }
+  }
 
+  async function fetchWithFallback(url) {
+    const proxies = [
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+      `https://thingproxy.freeboard.io/fetch/${url}`
+    ];
+    for (let proxy of proxies) {
+      try {
+        const response = await fetch(proxy + "&t=" + Date.now());
+        if (!response.ok) throw new Error("HTTP " + response.status);
+        let text = await response.text();
+        try {
+          if (text.includes('"contents"')) {
+            const wrap = JSON.parse(text);
+            text = wrap.contents;
+          }
+        } catch {}
+        return JSON.parse(text);
+      } catch(e) { console.warn("Proxy falló:", proxy, e.message); continue; }
+    }
+    throw new Error("Todos los proxies fallaron");
+  }
+
+  async function fetchLastEntry() {
+    const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
+    return await fetchWithFallback(url);
+  }
+
+  function render(entry) {
+    ensureErrorBox().style.display = "none";
+
+    const container = document.getElementById("values");
+    container.innerHTML = "";
+
+    fields.forEach(f => {
+      const value = entry[`field${f}`] ?? "—";
+      const div = document.createElement("div");
+      div.className = "stat";
+      div.innerHTML = `<div class='stat-label'>Field ${f}</div><div class='stat-value'>${value}</div>`;
+      container.appendChild(div);
+    });
+
+    document.getElementById("timestamp").textContent =
+      "Hora: " + new Date(entry.created_at).toLocaleString();
+  }
+
+  function renderError(message) {
+    const box = ensureErrorBox();
+    box.style.display = "block";
+    box.textContent = "⚠️ " + message;
+  }
+
+  async function update() {
+    try {
+      const data = await fetchLastEntry();
+      render(data);
+      saveLastGood(data);
+    } catch(err) {
+      renderError(err.message);
+
+      const lastGood = loadLastGood();
+      if (lastGood) render(lastGood);
+      else {
+        document.getElementById("values").innerHTML = "";
+        document.getElementById("timestamp").textContent = "";
+      }
+    }
+  }
+
+  // Primera carga
+  update();
+  // Actualización cada minuto
+  setInterval(update, 60000);
+
+});
+</script>
 
 </body>
 </html>
