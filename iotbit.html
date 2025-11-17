@@ -101,25 +101,43 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  async function fetchLastEntry() {
-    const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
-    const proxy = `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}&t=${Date.now()}`;
+  async function fetchWithFallback(url) {
+  const proxies = [
+    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    `https://thingproxy.freeboard.io/fetch/${url}`,
+    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
+  ];
 
-    const response = await fetch(proxy);
-    if (!response.ok) throw new Error("HTTP " + response.status);
-
-    let data;
+  for (let proxy of proxies) {
     try {
-      data = await response.json();
-    } catch {
-      throw new Error("La respuesta de ThingSpeak no es JSON válido");
-    }
+      const response = await fetch(proxy + "&t=" + Date.now());
+      if (!response.ok) throw new Error("HTTP " + response.status);
 
-    if (!data || Object.keys(data).length === 0) {
-      throw new Error("ThingSpeak devolvió datos vacíos");
-    }
+      let text = await response.text();
 
-    return data;
+      // AllOrigins "get" devuelve un JSON dentro de otro JSON
+      try {
+        if (text.includes('"contents"')) {
+          const wrap = JSON.parse(text);
+          text = wrap.contents;
+        }
+      } catch {}
+
+      return JSON.parse(text);
+    } catch (e) {
+      console.warn("Proxy falló:", proxy, e.message);
+      continue;
+    }
+  }
+
+  throw new Error("Todos los proxies fallaron");
+}
+
+async function fetchLastEntry() {
+  const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
+  return await fetchWithFallback(url);
+}
+
   }
 
   function render(entry) {
