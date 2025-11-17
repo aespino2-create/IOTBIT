@@ -1,6 +1,40 @@
 <script>
+document.addEventListener("DOMContentLoaded", () => {
+
   const channelId = 3160844;
   const fields = [1, 2, 3];
+
+  function ensureErrorBox() {
+    let box = document.getElementById("errorBox");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "errorBox";
+      box.style.display = "none";
+      box.style.background = "#fee2e2";
+      box.style.color = "#991b1b";
+      box.style.padding = "12px";
+      box.style.marginTop = "16px";
+      box.style.borderRadius = "8px";
+      box.style.textAlign = "center";
+      document.querySelector(".card").appendChild(box);
+    }
+    return box;
+  }
+
+  function saveLastGood(entry) {
+    try {
+      localStorage.setItem("lastGoodReading", JSON.stringify(entry));
+    } catch {}
+  }
+
+  function loadLastGood() {
+    try {
+      const data = localStorage.getItem("lastGoodReading");
+      return data ? JSON.parse(data) : null;
+    } catch {
+      return null;
+    }
+  }
 
   async function fetchLastEntry() {
     const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
@@ -12,18 +46,21 @@
     let data;
     try {
       data = await response.json();
-    } catch (e) {
-      throw new Error("La respuesta de ThingSpeak no es válida");
+    } catch {
+      throw new Error("La respuesta de ThingSpeak no es JSON válido");
     }
 
     if (!data || Object.keys(data).length === 0) {
-      throw new Error("Sin datos disponibles");
+      throw new Error("ThingSpeak devolvió datos vacíos");
     }
 
     return data;
   }
 
   function render(entry) {
+    const box = ensureErrorBox();
+    box.style.display = "none";
+
     const container = document.getElementById("values");
     container.innerHTML = "";
 
@@ -42,41 +79,32 @@
       "Hora: " + new Date(entry.created_at).toLocaleString();
   }
 
-  function showError(message) {
-    document.getElementById("values").innerHTML = "";
-    document.getElementById("timestamp").textContent = "";
-
-    const box = document.getElementById("errorBox");
-    if (box) {
-      box.textContent = "⚠️ " + message;
-      box.style.display = "block";
-    } else {
-      // por si no existe el div, lo creamos automáticamente
-      const div = document.createElement("div");
-      div.id = "errorBox";
-      div.style.background = "#fee2e2";
-      div.style.color = "#991b1b";
-      div.style.padding = "12px";
-      div.style.marginTop = "16px";
-      div.style.borderRadius = "8px";
-      div.style.textAlign = "center";
-      div.textContent = "⚠️ " + message;
-      document.querySelector(".card").appendChild(div);
-    }
+  function renderError(message) {
+    const box = ensureErrorBox();
+    box.style.display = "block";
+    box.textContent = "⚠️ " + message;
   }
 
   async function update() {
     try {
-      const last = await fetchLastEntry();
-      showError(""); // oculta error si lo había
-      const box = document.getElementById("errorBox");
-      if (box) box.style.display = "none";
-      render(last);
+      const data = await fetchLastEntry();
+      render(data);
+      saveLastGood(data);
     } catch (err) {
-      showError(err.message);
+      renderError(err.message);
+
+      const lastGood = loadLastGood();
+      if (lastGood) {
+        render(lastGood);
+      } else {
+        document.getElementById("values").innerHTML = "";
+        document.getElementById("timestamp").textContent = "";
+      }
     }
   }
 
   update();
   setInterval(update, 60000);
+
+});
 </script>
