@@ -76,117 +76,38 @@ body {
 document.addEventListener("DOMContentLoaded", () => {
 
   const channelId = 3160844;
-  const fields = [1, 2, 3];
+  const fields = [1,2,3];
 
+  // Función para asegurar que exista el contenedor de error
   function ensureErrorBox() {
     let box = document.getElementById("errorBox");
+    if (!box) {
+      box = document.createElement("div");
+      box.id = "errorBox";
+      box.style.display = "none";
+      box.style.background = "#fee2e2";
+      box.style.color = "#991b1b";
+      box.style.padding = "12px";
+      box.style.marginTop = "16px";
+      box.style.borderRadius = "8px";
+      box.style.textAlign = "center";
+      document.querySelector(".card").appendChild(box);
+    }
     return box;
   }
 
+  // Guardar última lectura válida
   function saveLastGood(entry) {
     try {
       localStorage.setItem("lastGoodReading", JSON.stringify(entry));
     } catch {}
   }
 
+  // Cargar última lectura válida
   function loadLastGood() {
     try {
-      const data = localStorage.getItem("lastGoodReading");
-      return data ? JSON.parse(data) : null;
-    } catch {
-      return null;
-    }
-  }
+      const data = localStorage.getItem("lastG
 
-  async function fetchWithFallback(url) {
-  const proxies = [
-    `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
-    `https://thingproxy.freeboard.io/fetch/${url}`,
-    `https://api.allorigins.win/get?url=${encodeURIComponent(url)}`
-  ];
-
-  for (let proxy of proxies) {
-    try {
-      const response = await fetch(proxy + "&t=" + Date.now());
-      if (!response.ok) throw new Error("HTTP " + response.status);
-
-      let text = await response.text();
-
-      // AllOrigins "get" devuelve un JSON dentro de otro JSON
-      try {
-        if (text.includes('"contents"')) {
-          const wrap = JSON.parse(text);
-          text = wrap.contents;
-        }
-      } catch {}
-
-      return JSON.parse(text);
-    } catch (e) {
-      console.warn("Proxy falló:", proxy, e.message);
-      continue;
-    }
-  }
-
-  throw new Error("Todos los proxies fallaron");
-}
-
-async function fetchLastEntry() {
-  const url = `https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
-  return await fetchWithFallback(url);
-}
-
-  }
-
-  function render(entry) {
-    document.getElementById("errorBox").style.display = "none";
-
-    const container = document.getElementById("values");
-    container.innerHTML = "";
-
-    fields.forEach(f => {
-      const value = entry[`field${f}`] ?? "—";
-      const div = document.createElement("div");
-      div.className = "stat";
-      div.innerHTML = `
-        <div class='stat-label'>Field ${f}</div>
-        <div class='stat-value'>${value}</div>
-      `;
-      container.appendChild(div);
-    });
-
-    document.getElementById("timestamp").textContent =
-      "Hora: " + new Date(entry.created_at).toLocaleString();
-  }
-
-  function renderError(message) {
-    const box = document.getElementById("errorBox");
-    box.style.display = "block";
-    box.textContent = "⚠️ " + message;
-  }
-
-  async function update() {
-    try {
-      const data = await fetchLastEntry();
-      render(data);
-      saveLastGood(data);
-    } catch (err) {
-      renderError(err.message);
-
-      const lastGood = loadLastGood();
-      if (lastGood) {
-        render(lastGood);
-      } else {
-        document.getElementById("values").innerHTML = "";
-        document.getElementById("timestamp").textContent = "";
-      }
-    }
-  }
-
-  update();
-  setInterval(update, 60000);
-
-});
-</script>
 
 </body>
 </html>
