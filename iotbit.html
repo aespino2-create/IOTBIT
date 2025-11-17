@@ -32,62 +32,106 @@ canvas { display:block; width:100%; height:250px; margin-top:20px; background:#f
 
 <script>
 document.addEventListener("DOMContentLoaded", () => {
+  const channelId = 3160844;
   const fields = [1,2,3];
   const fieldNames = ["Temperatura","Humedad","Luminosidad"];
   let charts = [];
 
-  // Función para renderizar los valores de los campos
-  function renderValues(entry) {
-    const container = document.getElementById("values");
-    container.innerHTML = "";
-    fields.forEach((f,i)=>{
-      const value = entry[`field${f}`] ?? "—";
-      const label = fieldNames[i];
-      const div = document.createElement("div");
-      div.className="stat";
-      div.innerHTML=`<div class='stat-label'>${label}</div><div class='stat-value'>${value}</div>`;
-      container.appendChild(div);
-    });
-    document.getElementById("timestamp").textContent="Hora: "+new Date(entry.created_at || Date.now()).toLocaleString();
+  // Guardar lectura y mantener historial en localStorage
+  function saveHistory(entry){
+    try{
+      let history = JSON.parse(localStorage.getItem("history")) || {};
+      fields.forEach((f)=>{
+        if(!history[`field${f}`]) history[`field${f}`] = [];
+        history[`field${f}`].push({value: entry[`field${f}`], time: entry.created_at});
+        if(history[`field${f}`].length>24) history[`field${f}`].shift();
+      });
+      localStorage.setItem("history", JSON.stringify(history));
+      localStorage.setItem("lastGoodReading", JSON.stringify(entry));
+    }catch(e){}
   }
 
-  // Función para crear gráficos
-  function renderCharts(entry){
+  function loadHistory(){ 
+    try{return JSON.parse(localStorage.getItem("history"))||{};}catch{return {};}
+  }
+  function loadLastGood(){
+    try{return JSON.parse(localStorage.getItem("lastGoodReading"));}catch{return null;}
+  }
+
+  // Mostrar valores actuales
+  function renderValues(entry){
+    const container = document.getElementById("values");
+    container.innerHTML="";
     fields.forEach((f,i)=>{
-      const ctx = document.getElementById(`chart${f}`).getContext('2d');
-      const data = [];
-      // Llenamos con 24 valores simulados si no hay datos reales
-      for(let j=23;j>=0;j--){
-        const d = new Date(Date.now()-j*3600000); // cada hora
-        const y = entry[`field${f}`] ? Number(entry[`field${f}`]) : Math.floor(Math.random()*50);
-        data.push({x:d,y:y});
-      }
+      const value = entry[`field${f}`] ?? "—";
+      const div = document.createElement("div");
+      div.className="stat";
+      div.innerHTML=`<div class='stat-label'>${fieldNames[i]}</div><div class='stat-value'>${value}</div>`;
+      container.appendChild(div);
+    });
+    document.getElementById("timestamp").textContent="Hora: "+new Date(entry.created_at||Date.now()).toLocaleString();
+  }
+
+  // Renderizar gráficos
+  function renderCharts(){
+    const history = loadHistory();
+    fields.forEach((f,i)=>{
+      const canvas = document.getElementById(`chart${f}`);
+      const ctx = canvas.getContext('2d');
+
+      let raw = history[`field${f}`] || [];
+      // Si no hay datos, usar un valor temporal
+      if(raw.length===0) raw=[{value:0,time:new Date().toISOString()}];
+
+      const data = raw.map(e=>({x:new Date(e.time), y:Number(e.value)})).filter(e=>!isNaN(e.x)&&!isNaN(e.y));
+
       if(charts[i]) charts[i].destroy();
-      charts[i]=new Chart(ctx,{
+
+      charts[i] = new Chart(ctx,{
         type:'line',
-        data:{datasets:[{label:fieldNames[i],data:data,borderColor:'#3A7CA5',backgroundColor:'rgba(58,124,165,0.2)',fill:true,tension:0.3,pointRadius:3}]},
-        options:{responsive:true,maintainAspectRatio:false,scales:{x:{type:'time',time:{unit:'hour',tooltipFormat:'dd/MM HH:mm'}},y:{beginAtZero:true}},plugins:{legend:{display:true}}}
+        data:{datasets:[{
+          label:fieldNames[i],
+          data:data,
+          borderColor:'#3A7CA5',
+          backgroundColor:'rgba(58,124,165,0.2)',
+          fill:true,
+          tension:0.3,
+          pointRadius:3
+        }]},
+        options:{
+          responsive:true,
+          maintainAspectRatio:false,
+          scales:{
+            x:{type:'time',time:{unit:'hour',tooltipFormat:'dd/MM HH:mm'}},
+            y:{beginAtZero:true}
+          },
+          plugins:{legend:{display:true}}
+        }
       });
     });
   }
 
-  // Intentar obtener datos de ThingSpeak
+  // Actualización desde ThingSpeak
   async function update(){
-    const url="https://api.thingspeak.com/channels/3160844/feeds/last.json";
+    const url=`https://api.thingspeak.com/channels/${channelId}/feeds/last.json`;
     try{
       const proxy=`https://api.allorigins.win/raw?url=${encodeURIComponent(url)}&t=${Date.now()}`;
       const res=await fetch(proxy);
       if(!res.ok) throw new Error("HTTP "+res.status);
       const data=await res.json();
       renderValues(data);
-      renderCharts(data);
+      saveHistory(data);
+      renderCharts();
+      document.getElementById("errorBox").style.display="none";
     }catch(err){
-      document.getElementById("errorBox").style.display="block";
-      document.getElementById("errorBox").textContent="⚠️ Error: "+err.message;
-      // Renderizar valores de fallback con números aleatorios
-      const fallback={field1:10,field2:20,field3:30,created_at:new Date().toISOString()};
-      renderValues(fallback);
-      renderCharts(fallback);
+      const last = loadLastGood();
+      if(last){
+        renderValues(last);
+        renderCharts();
+      }
+      const box=document.getElementById("errorBox");
+      box.style.display="block";
+      box.textContent="⚠️ Error: "+err.message;
     }
   }
 
